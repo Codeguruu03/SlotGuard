@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SlotGuard — Concurrent Reservation & Double-Booking Prevention Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-card: rgba(18, 24, 38, 0.7);
+            --bg-card-border: rgba(255, 255, 255, 0.08);
+            --accent-cyan: #06b6d4;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-danger: #ef4444;
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --font-main: 'Plus Jakarta Sans', sans-serif;
+            --font-code: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.12) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.12) 0px, transparent 50%);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1240px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--bg-card-border);
+            margin-bottom: 2.5rem;
+        }
+
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.4rem;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+        }
+
+        .logo-title h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(to right, #ffffff, #93c5fd);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo-title p {
+            font-size: 0.825rem;
+            color: var(--text-muted);
+        }
+
+        /* Mode Toggle Banner */
+        .mode-banner {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .mode-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .mode-badge {
+            padding: 0.4rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: all 0.3s ease;
+        }
+
+        .mode-badge.vulnerable {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+        }
+
+        .mode-badge.safe {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+        }
+
+        .toggle-btn {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: var(--text-main);
+            padding: 0.65rem 1.4rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .toggle-btn:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 4px 16px rgba(6, 182, 212, 0.25);
+        }
+
+        /* Layout Grid */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 2rem;
+        }
+
+        @media (max-width: 960px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--bg-card-border);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        /* Slots Grid */
+        .slots-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .slot-card {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: all 0.25s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slot-card:hover {
+            border-color: var(--accent-cyan);
+            transform: translateY(-3px);
+        }
+
+        .slot-card.double-booked {
+            border-color: var(--accent-danger) !important;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+            animation: pulseDanger 2s infinite;
+        }
+
+        @keyframes pulseDanger {
+            0% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
+            50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.6); }
+            100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.3); }
+        }
+
+        .slot-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .slot-meta {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .capacity-bar-bg {
+            background: rgba(255, 255, 255, 0.1);
+            height: 8px;
+            border-radius: 999px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .capacity-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+            border-radius: 999px;
+            transition: width 0.4s ease;
+        }
+
+        .capacity-bar-fill.full {
+            background: linear-gradient(90deg, var(--accent-warning), var(--accent-danger));
+        }
+
+        .status-tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+        }
+
+        .status-tag.ok {
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+        }
+
+        .status-tag.violation {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            color: #fff;
+            border: none;
+            padding: 0.65rem 1rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            box-shadow: 0 4px 15px rgba(6, 182, 212, 0.4);
+        }
+
+        .btn-stress {
+            background: linear-gradient(135deg, var(--accent-purple), #6366f1);
+            color: #fff;
+            border: none;
+            padding: 0.65rem 1rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.875rem;
+            cursor: pointer;
+            margin-top: 0.5rem;
+            width: 100%;
+            transition: all 0.2s ease;
+        }
+
+        .btn-stress:hover {
+            opacity: 0.9;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+
+        /* Form elements */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            color: var(--text-muted);
+        }
+
+        .form-input {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 8px;
+            padding: 0.65rem 0.85rem;
+            color: #fff;
+            font-family: var(--font-main);
+            font-size: 0.9rem;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        /* Log console */
+        .log-console {
+            background: #050811;
+            border: 1px solid var(--bg-card-border);
+            border-radius: 10px;
+            padding: 1rem;
+            font-family: var(--font-code);
+            font-size: 0.8rem;
+            max-height: 280px;
+            overflow-y: auto;
+            color: #a7f3d0;
+        }
+
+        .log-entry {
+            margin-bottom: 0.4rem;
+            line-height: 1.4;
+        }
+
+        .log-entry.error { color: #fca5a5; }
+        .log-entry.warn { color: #fde047; }
+        .log-entry.info { color: #93c5fd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo-group">
+                <div class="logo-icon">SG</div>
+                <div class="logo-title">
+                    <h1>SlotGuard</h1>
+                    <p>Concurrent Reservation & Double-Booking Prevention Platform</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Concurrency Mode Switcher Banner -->
+        <div class="mode-banner">
+            <div class="mode-info">
+                <div>
+                    <span class="mode-badge vulnerable" id="modeBadge">VULNERABLE MODE</span>
+                </div>
+                <div style="font-size: 0.875rem; color: var(--text-muted);" id="modeDesc">
+                    Unsynchronized check-then-act logic. Simultaneous requests will reproduce double-booking defects!
+                </div>
+            </div>
+            <button class="toggle-btn" onclick="toggleMode()">
+                ⚡ Switch Concurrency Mode
+            </button>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="main-grid">
+            <!-- Left Side: Slots Grid -->
+            <div>
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">Available Reservation Slots</div>
+                        <button class="btn-primary" style="width: auto; padding: 0.4rem 0.8rem;" onclick="loadSlots()">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                    <div class="slots-container" id="slotsContainer">
+                        <!-- Dynamic Slot Cards Loaded Here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Action Panel & Live Log Console -->
+            <div>
+                <!-- Create Slot Form -->
+                <div class="card">
+                    <div class="card-title" style="margin-bottom: 1rem;">Create New Slot</div>
+                    <form onsubmit="handleCreateSlot(event)">
+                        <div class="form-group">
+                            <label>Slot Title</label>
+                            <input type="text" id="slotTitleInput" class="form-input" placeholder="e.g. VIP Consultation" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Capacity</label>
+                            <input type="number" id="slotCapacityInput" class="form-input" value="1" min="1" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Create Slot</button>
+                    </form>
+                </div>
+
+                <!-- Browser Concurrency Test Trigger -->
+                <div class="card">
+                    <div class="card-title" style="margin-bottom: 0.5rem;">Browser Concurrent Stress Test</div>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                        Fire simultaneous async booking HTTP POST requests directly from your browser to stress test concurrency.
+                    </p>
+                    <div class="form-group">
+                        <label>Target Slot ID</label>
+                        <input type="number" id="stressSlotId" class="form-input" value="1" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Concurrent Users (Requests)</label>
+                        <select id="stressUserCount" class="form-input">
+                            <option value="10">10 Concurrent Requests</option>
+                            <option value="50">50 Concurrent Requests</option>
+                            <option value="100" selected>100 Concurrent Requests</option>
+                        </select>
+                    </div>
+                    <button class="btn-stress" onclick="triggerConcurrentStressTest()">
+                        🔥 Launch Concurrent Request Blast
+                    </button>
+                </div>
+
+                <!-- Live Test Execution Log -->
+                <div class="card">
+                    <div class="card-title" style="margin-bottom: 0.75rem;">Live Test Logs</div>
+                    <div class="log-console" id="logConsole">
+                        <div class="log-entry info">[System Initialized] Ready for concurrency testing.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'VULNERABLE';
+
+        async function fetchMode() {
+            try {
+                const res = await fetch('/api/config/concurrency-mode');
+                const json = await res.json();
+                if (json.success) {
+                    currentMode = json.data;
+                    updateModeUI();
+                }
+            } catch (err) {
+                log('Error fetching mode: ' + err.message, 'error');
+            }
+        }
+
+        function updateModeUI() {
+            const badge = document.getElementById('modeBadge');
+            const desc = document.getElementById('modeDesc');
+
+            if (currentMode === 'VULNERABLE') {
+                badge.className = 'mode-badge vulnerable';
+                badge.innerText = 'VULNERABLE MODE';
+                desc.innerText = 'Unsynchronized check-then-act. Concurrent requests WILL induce double bookings!';
+            } else {
+                badge.className = 'mode-badge safe';
+                badge.innerText = 'SAFE MODE (Pessimistic Lock)';
+                desc.innerText = 'Transactional Pessimistic Locking active. Prevents double-booking race conditions!';
+            }
+        }
+
+        async function toggleMode() {
+            const newMode = currentMode === 'VULNERABLE' ? 'SAFE' : 'VULNERABLE';
+            try {
+                const res = await fetch('/api/config/concurrency-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode: newMode })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    currentMode = json.data;
+                    updateModeUI();
+                    log(`Concurrency mode switched to ${currentMode}`, 'info');
+                }
+            } catch (err) {
+                log('Failed to switch mode: ' + err.message, 'error');
+            }
+        }
+
+        async function loadSlots() {
+            try {
+                const res = await fetch('/api/slots');
+                const json = await res.json();
+                if (json.success) {
+                    renderSlots(json.data);
+                }
+            } catch (err) {
+                log('Error loading slots: ' + err.message, 'error');
+            }
+        }
+
+        async function renderSlots(slots) {
+            const container = document.getElementById('slotsContainer');
+            container.innerHTML = '';
+
+            for (const slot of slots) {
+                // Fetch invariant status
+                const invRes = await fetch(`/api/slots/${slot.id}/invariant`);
+                const invJson = await invRes.json();
+                const invData = invJson.data || {};
+
+                const isDoubleBooked = invData.doubleBooked;
+                const actualCount = invData.actualDbReservationsCount || 0;
+                const percent = Math.min(100, Math.round((slot.reservedCount / slot.capacity) * 100));
+                const isFull = slot.reservedCount >= slot.capacity;
+
+                const slotEl = document.createElement('div');
+                slotEl.className = `slot-card ${isDoubleBooked ? 'double-booked' : ''}`;
+                slotEl.innerHTML = `
+                    <div class="slot-title">#${slot.id} — ${escapeHtml(slot.title)}</div>
+                    <div class="slot-meta">Capacity: ${slot.capacity} | App Reserved: ${slot.reservedCount} | DB Actual: ${actualCount}</div>
+                    
+                    <div class="capacity-bar-bg">
+                        <div class="capacity-bar-fill ${isFull ? 'full' : ''}" style="width: ${percent}%;"></div>
+                    </div>
+
+                    <div>
+                        <span class="status-tag ${isDoubleBooked ? 'violation' : 'ok'}">
+                            ${isDoubleBooked ? '🚨 DOUBLE BOOKED DEFECT!' : '✅ INVARIANT HOLDING'}
+                        </span>
+                    </div>
+
+                    <button class="btn-primary" onclick="reserveSingleSlot(${slot.id})">
+                        Book Slot
+                    </button>
+                `;
+                container.appendChild(slotEl);
+            }
+        }
+
+        async function reserveSingleSlot(slotId) {
+            const userName = 'User_' + Math.floor(Math.random() * 1000);
+            try {
+                const res = await fetch('/api/reservations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ slotId, userName })
+                });
+                const json = await res.json();
+                if (res.status === 201) {
+                    log(`Booking Success for ${userName} (Slot #${slotId})`, 'info');
+                } else {
+                    log(`Booking Rejected (HTTP ${res.status}): ${json.message}`, 'warn');
+                }
+                loadSlots();
+            } catch (err) {
+                log('Reservation request error: ' + err.message, 'error');
+            }
+        }
+
+        async function handleCreateSlot(e) {
+            e.preventDefault();
+            const title = document.getElementById('slotTitleInput').value;
+            const capacity = parseInt(document.getElementById('slotCapacityInput').value);
+
+            try {
+                const res = await fetch('/api/slots', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, capacity })
+                });
+                const json = await res.json();
+                if (json.success) {
+                    log(`Slot Created: "${title}" (Capacity: ${capacity})`, 'info');
+                    document.getElementById('slotTitleInput').value = '';
+                    loadSlots();
+                }
+            } catch (err) {
+                log('Failed to create slot: ' + err.message, 'error');
+            }
+        }
+
+        async function triggerConcurrentStressTest() {
+            const slotId = parseInt(document.getElementById('stressSlotId').value);
+            const userCount = parseInt(document.getElementById('stressUserCount').value);
+
+            log(`🚀 Launching ${userCount} simultaneous booking requests targeting Slot #${slotId} (Mode: ${currentMode})...`, 'warn');
+
+            const requests = [];
+            for (let i = 1; i <= userCount; i++) {
+                const req = fetch('/api/reservations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ slotId: slotId, userName: `Tester_${i}` })
+                });
+                requests.push(req);
+            }
+
+            const startTime = performance.now();
+            const responses = await Promise.all(requests);
+            const endTime = performance.now();
+
+            let success201 = 0;
+            let rejected409 = 0;
+            let errorsCount = 0;
+
+            for (const r of responses) {
+                if (r.status === 201) success201++;
+                else if (r.status === 409) rejected409++;
+                else errorsCount++;
+            }
+
+            const latency = Math.round(endTime - startTime);
+            log(`⚡ Stress Test Completed in ${latency}ms:`, 'info');
+            log(`   └─ Successful (HTTP 201): ${success201}`, success201 > 1 ? 'error' : 'info');
+            log(`   └─ Rejected (HTTP 409): ${rejected409}`, 'info');
+
+            // Refresh UI and invariant check
+            await loadSlots();
+        }
+
+        function log(msg, type = 'info') {
+            const console = document.getElementById('logConsole');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.innerText = `[${time}] ${msg}`;
+            console.appendChild(entry);
+            console.scrollTop = console.scrollHeight;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // Init
+        fetchMode();
+        loadSlots();
+    </script>
+</body>
+</html>

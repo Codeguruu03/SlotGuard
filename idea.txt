@@ -1,0 +1,717 @@
+Concurrent Reservation & Double-Booking Prevention Test Engineering Project
+
+Core problem:
+
+When thousands of users try to reserve the same limited slot at exactly the same time, can the system guarantee that only the allowed number of users get the slot?
+
+That's it.
+
+The entire project revolves around one problem: preventing incorrect reservations under concurrency.
+
+This gives you a genuinely interesting QA/SDET project rather than a generic Selenium automation project.
+
+The Problem
+
+Imagine there is one highly desirable appointment slot:
+
+Doctor: Dr. Sharma
+Date: 15 August
+Time: 10:00 AM
+Available Slots: 1
+
+Now:
+
+User A ─────┐
+User B ─────┤
+User C ─────┤──→ BOOK 10:00 AM
+User D ─────┤
+User E ─────┘
+
+All requests arrive almost simultaneously.
+
+The system must guarantee:
+
+Successful bookings: 1
+Rejected bookings:   4
+
+Never:
+
+Successful bookings: 2
+
+That is the entire purpose of SlotGuard.
+
+Why this is much better than a normal Selenium project
+
+A normal project says:
+
+"I automated login, search and checkout."
+
+Your project says:
+
+"I designed an automated test engineering system to detect race conditions and double-booking defects in a concurrent reservation system."
+
+That's a much stronger interview story.
+
+What You Build
+
+You build a small reservation application.
+
+It only needs:
+
+Create Slot
+     ↓
+View Slot
+     ↓
+Reserve Slot
+
+That's enough.
+
+Don't add:
+
+❌ Payment
+
+❌ Chat
+
+❌ Notifications
+
+❌ Admin dashboards
+
+❌ Recommendation engine
+
+❌ User profiles
+
+❌ AI chatbot
+
+❌ Multiple business modules
+
+The application stays intentionally small.
+
+The testing problem is the complexity.
+
+Core Architecture
+                       SlotGuard Application
+                              │
+                 ┌────────────┴────────────┐
+                 │                         │
+             REST API                  Web UI
+                 │                         │
+          Spring Boot / Java             │
+                 │                 Selenium / Playwright
+                 │
+             PostgreSQL
+                 │
+          Transaction Logic
+                 │
+        Concurrency Protection
+
+And your test engineering layer:
+
+                 Test Automation
+                       │
+       ┌───────────────┼────────────────┐
+       │               │                │
+    UI Tests        API Tests       Load Tests
+       │               │                │
+ Selenium         REST Assured        JMeter
+ Playwright
+       │               │                │
+       └───────────────┼────────────────┘
+                       │
+                    TestNG
+                       │
+                    Allure
+                       │
+                  GitLab CI/CD
+                       │
+                     Jira
+The Most Important Test
+
+Suppose:
+
+Available seats = 1
+
+Generate:
+
+100 concurrent requests
+
+All trying:
+
+POST /reservations
+
+Expected:
+
+HTTP 201 → 1 request
+
+HTTP 409 → 99 requests
+
+Then query the database:
+
+SELECT COUNT(*)
+FROM reservations
+WHERE slot_id = 101;
+
+Expected:
+
+1
+
+If the result is:
+
+2
+
+🔥 You found a concurrency defect.
+
+Your Test Suite
+1. Functional UI Testing
+
+Use Selenium.
+
+Example:
+
+Open SlotGuard
+
+↓
+
+Search available slot
+
+↓
+
+Select slot
+
+↓
+
+Reserve
+
+↓
+
+Verify confirmation
+
+Selenium validates the traditional user journey.
+
+2. Cross-Browser UI Testing
+
+Use Playwright.
+
+Run:
+
+Chromium
+Firefox
+WebKit
+
+Test the exact same reservation workflow.
+
+You're not using Playwright for another application feature.
+
+You're using it to answer:
+
+Does the reservation workflow behave consistently across browsers?
+
+3. API Testing
+
+Use:
+
+REST Assured
+
+Example:
+
+given()
+    .contentType(ContentType.JSON)
+    .body(request)
+.when()
+    .post("/reservations")
+.then()
+    .statusCode(201);
+
+Test:
+
+Create slot
+Get slot
+Reserve slot
+Cancel reservation
+
+But the main focus remains:
+
+Reservation correctness.
+4. Database Validation
+
+Use SQL.
+
+After the API/UI operation:
+
+SELECT
+    slot_id,
+    COUNT(*) AS reservation_count
+FROM reservations
+GROUP BY slot_id;
+
+Your test asserts:
+
+reservation_count <= slot.capacity
+
+This is important because you aren't merely checking:
+
+"API returned 200."
+
+You're checking:
+
+"Did the database actually maintain the business invariant?"
+
+That's a strong SDET concept.
+
+5. JMeter — The Interesting Part
+
+This is where the project becomes much more impressive.
+
+Create a JMeter test:
+
+             1 Slot
+               │
+       ┌───────┴────────┐
+       │                │
+      100              500
+     users            users
+       │                │
+       └───────┬────────┘
+               │
+        POST /reservation
+               │
+          Application
+               │
+        PostgreSQL
+
+Test scenarios:
+
+Scenario A
+1 slot
+10 users
+Scenario B
+1 slot
+100 users
+Scenario C
+1 slot
+1,000 users
+Scenario D
+10 slots
+1,000 users
+
+Measure:
+
+Response time
+Throughput
+Error percentage
+Successful reservations
+Rejected reservations
+Database correctness
+The Key Invariant
+
+Your project should have a formal rule:
+
+A slot can never have more successful reservations than its configured capacity.
+
+Represent it as:
+
+successful_reservations <= slot_capacity
+
+Every test ultimately verifies this.
+
+That's what makes the project cohesive.
+
+6. TestNG
+
+Organize tests:
+
+ReservationFunctionalTests
+
+ReservationConcurrencyTests
+
+ReservationNegativeTests
+
+ReservationDatabaseTests
+
+ReservationCrossBrowserTests
+
+Use TestNG features like:
+
+@DataProvider
+
+@BeforeSuite
+
+@BeforeClass
+
+@Parameters
+
+Parallel execution
+
+Groups
+
+Example:
+
+smoke
+regression
+concurrency
+database
+cross-browser
+7. Allure
+
+Your report should answer:
+
+What was tested?
+
+How many users?
+
+Which browser?
+
+Which API?
+
+How many reservations succeeded?
+
+How many failed?
+
+Was the database consistent?
+
+Did concurrency protection work?
+
+Example:
+
+╔══════════════════════════════════╗
+║       SLOTGUARD TEST REPORT      ║
+╠══════════════════════════════════╣
+║ Requests             1,000       ║
+║ Successful           1           ║
+║ Rejected             999         ║
+║ Double Booking       0           ║
+║ DB Violations        0           ║
+║ Avg Response         142 ms      ║
+║ P95 Response         391 ms      ║
+║ Status               PASSED      ║
+╚══════════════════════════════════╝
+8. GitLab CI/CD
+
+Every push triggers:
+
+Git Push
+   ↓
+GitLab
+   ↓
+Build
+   ↓
+Unit Tests
+   ↓
+Start Docker Environment
+   ↓
+API Tests
+   ↓
+UI Tests
+   ↓
+Database Validation
+   ↓
+JMeter Load Test
+   ↓
+Allure Report
+   ↓
+Pass / Fail
+Docker
+
+Don't use Docker just because it's on your resume.
+
+Use it to create a reproducible test environment:
+
+Docker Compose
+
+├── slotguard-api
+│
+├── postgres
+│
+└── test-runner
+
+Everyone can clone the repository and run:
+
+docker compose up
+
+Then execute:
+
+mvn test
+
+No cloud required.
+
+Jira Integration
+
+Now there's another genuinely useful part.
+
+Suppose your concurrency test detects:
+
+Expected successful reservations: 1
+Actual: 2
+
+The pipeline can create a Jira defect:
+
+SLOT-27
+
+Title:
+Double booking detected under concurrent reservation requests
+
+Environment:
+Docker
+
+Users:
+100
+
+Expected:
+1 successful reservation
+
+Actual:
+2 successful reservations
+
+Build:
+#142
+
+Allure:
+Test report attached
+
+You don't need to build a fake Jira.
+
+Use Jira's API for the integration.
+
+For a fully free setup, you can also make this integration optional and run the rest of the project entirely locally.
+
+The Complete Workflow
+
+This is the part I particularly like about the project.
+
+Developer changes code
+          │
+          ▼
+       Git Push
+          │
+          ▼
+     GitLab Pipeline
+          │
+          ▼
+       Maven Build
+          │
+          ▼
+      Start Docker
+          │
+          ▼
+      Test Database
+          │
+          ▼
+     REST Assured
+          │
+          ▼
+       TestNG
+          │
+       ┌──┴──┐
+       ▼     ▼
+   Selenium Playwright
+       │     │
+       └──┬──┘
+          │
+          ▼
+       JMeter
+          │
+          ▼
+   Concurrent Requests
+          │
+          ▼
+      PostgreSQL
+          │
+          ▼
+    Validate Invariant
+          │
+      ┌───┴────┐
+      │        │
+    PASS      FAIL
+      │        │
+      ▼        ▼
+   Allure    Jira Bug
+
+Notice that every technology has a specific job.
+
+That's exactly what you were asking for.
+
+Suggested Project Structure
+slotguard/
+│
+├── application/
+│   ├── src/
+│   ├── pom.xml
+│   └── Dockerfile
+│
+├── automation/
+│   │
+│   ├── src/test/java/
+│   │   │
+│   │   ├── api/
+│   │   │   ├── SlotApiTest.java
+│   │   │   └── ReservationApiTest.java
+│   │   │
+│   │   ├── ui/
+│   │   │   ├── SeleniumReservationTest.java
+│   │   │   └── PlaywrightReservationTest.java
+│   │   │
+│   │   ├── database/
+│   │   │   └── ReservationDatabaseTest.java
+│   │   │
+│   │   ├── concurrency/
+│   │   │   └── ConcurrentReservationTest.java
+│   │   │
+│   │   ├── config/
+│   │   │   └── TestConfig.java
+│   │   │
+│   │   └── utils/
+│   │
+│   └── pom.xml
+│
+├── performance/
+│   └── slotguard-load-test.jmx
+│
+├── database/
+│   ├── schema.sql
+│   └── test-data.sql
+│
+├── docker/
+│   └── docker-compose.yml
+│
+├── .gitlab-ci.yml
+│
+├── allure/
+│
+├── docs/
+│   ├── architecture.md
+│   ├── test-strategy.md
+│   └── concurrency-strategy.md
+│
+└── README.md
+Technology Mapping
+Technology	Why you're using it
+Java	Automation + application
+Selenium	UI reservation testing
+Playwright	Cross-browser reservation testing
+REST Assured	REST API validation
+TestNG	Test orchestration
+Maven	Build/dependency management
+JMeter	Concurrent load testing
+SQL	Database/invariant validation
+Docker	Reproducible environment
+GitLab CI/CD	Automated test pipeline
+JIRA	Defect lifecycle
+Allure	Test reporting
+
+The important thing is that none of these are random additions.
+
+They all exist to answer one question:
+
+"Can SlotGuard reliably prevent overbooking when many users attempt the same reservation simultaneously?"
+
+What makes it innovative?
+
+The innovation isn't the reservation application.
+
+It's the testing problem.
+
+Most automation projects test:
+
+Login
+Search
+Add to cart
+Checkout
+
+Your project tests:
+
+              Race Condition
+                   ↓
+        Concurrent Requests
+                   ↓
+             API Layer
+                   ↓
+         Transaction Handling
+                   ↓
+              Database
+                   ↓
+          Business Invariant
+                   ↓
+          Automated Detection
+
+You can intentionally introduce a bug into the application:
+
+// Vulnerable implementation
+
+int available = slot.getCapacity();
+
+if (available > 0) {
+    reservationRepository.save(reservation);
+}
+
+Then run 100 concurrent requests.
+
+Your framework should catch the defect.
+
+Then fix it using proper transaction/locking techniques, for example:
+
+Pessimistic Lock
+       OR
+Optimistic Lock
+       OR
+Atomic Database Operation
+
+Run the exact same test again.
+
+Before Fix
+
+100 requests
+     ↓
+2 successful
+     ↓
+❌ DOUBLE BOOKING
+
+
+After Fix
+
+100 requests
+     ↓
+1 successful
+99 rejected
+     ↓
+✅ SAFE
+
+That before/after demonstration would be fantastic in an interview.
+
+Resume Entry
+SlotGuard — Concurrent Reservation Test Engineering Platform
+
+Java | Selenium | Playwright | REST Assured | TestNG | JMeter | SQL | Docker | GitLab CI/CD | Jira | Allure
+
+Developed an automated test engineering platform for detecting race conditions and double-booking defects in concurrent reservation systems.
+Built API, UI, database, cross-browser, and 1,000+ concurrent-user load tests using REST Assured, Selenium, Playwright, TestNG, and JMeter.
+Implemented automated database invariant validation using SQL to verify that successful reservations never exceeded slot capacity.
+Containerized the application and test environment with Docker and integrated automated regression, concurrency, and performance testing into GitLab CI/CD.
+Generated Allure test reports and integrated failed test scenarios with Jira for automated defect tracking.
+And yes — this can be completely free
+
+You can run the core project on your laptop:
+
+Java                 → Free
+Maven                → Free
+Selenium             → Free
+Playwright            → Free
+REST Assured          → Free
+TestNG                → Free
+JMeter                → Free
+PostgreSQL            → Free
+Docker                → Free
+GitLab                → Free tier
+Allure                → Free
+
+You do not need AWS/Azure/GCP.
+
+The only thing that can potentially involve a paid service is Jira/GitLab usage beyond their free limits, but you can design the project so the complete core system works locally without them.
+
+One important recommendation
+
+Don't build the application too deeply. Spend ~30% of your effort on SlotGuard itself and ~70% on the engineering/testing framework.
+
+The portfolio story should be:
+
+"I didn't build another booking application. I built an automated system that proves whether a reservation system remains correct under concurrency."
+
+That is much more distinctive for a QA Automation / SDET / Software Test Engineer / Java Automation Engineer resume.
