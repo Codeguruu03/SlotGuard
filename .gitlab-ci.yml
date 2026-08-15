@@ -1,0 +1,259 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SlotGuard — GitLab CI/CD Pipeline
+#
+# Pipeline Stages:
+#   1. build          → Compile the Spring Boot application
+#   2. unit-test      → Run application unit tests (JUnit + MockMvc)
+#   3. integration    → Start the app via Docker, run API + DB + Concurrency tests
+#   4. ui-test        → Selenium + Playwright cross-browser tests
+#   5. load-test      → JMeter concurrent load test (race condition detection)
+#   6. report         → Generate and publish Allure test report
+#
+# Every stage publishes allure-results so the final report
+# aggregates results from all test types.
+# ─────────────────────────────────────────────────────────────────────────────
+
+image: eclipse-temurin:17-jdk-alpine
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end -q"
+  APP_PORT: "8080"
+  BASE_URL: "http://localhost:8080"
+
+# Cache Maven dependencies across pipeline runs
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - .m2/repository/
+    - application/.m2/repository/
+    - automation/.m2/repository/
+
+stages:
+  - build
+  - unit-test
+  - integration
+  - ui-test
+  - load-test
+  - report
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 1: Build — Compile & package the Spring Boot application
+# ─────────────────────────────────────────────────────────────────────────────
+build-application:
+  stage: build
+  script:
+    - echo "=== Building SlotGuard Application ==="
+    - cd application
+    - chmod +x mvnw
+    - ./mvnw $MAVEN_CLI_OPTS package -DskipTests
+    - echo "=== Build Successful ==="
+  artifacts:
+    paths:
+      - application/target/slotguard-application-*.jar
+    expire_in: 1 hour
+  tags:
+    - docker
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 2: Unit Tests — Spring Boot JUnit tests with MockMvc
+# ─────────────────────────────────────────────────────────────────────────────
+unit-tests:
+  stage: unit-test
+  script:
+    - echo "=== Running Application Unit Tests ==="
+    - cd application
+    - chmod +x mvnw
+    - ./mvnw $MAVEN_CLI_OPTS test
+    - echo "=== Unit Tests Passed ==="
+  artifacts:
+    when: always
+    paths:
+      - application/target/surefire-reports/
+    reports:
+      junit: application/target/surefire-reports/TEST-*.xml
+    expire_in: 1 hour
+  tags:
+    - docker
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 3: Integration Tests — API, Concurrency & Database Invariant Tests
+# Starts the application, waits for health, then runs the automation suite
+# ─────────────────────────────────────────────────────────────────────────────
+integration-tests:
+  stage: integration
+  services:
+    - name: eclipse-temurin:17-jre-alpine
+      alias: slotguard-app
+  before_script:
+    - echo "=== Starting SlotGuard Application ==="
+    - java -jar application/target/slotguard-application-*.jar &
+    - APP_PID=$!
+    - echo "Application PID $APP_PID"
+    # Wait for the app to be ready (up to 60 seconds)
+    - |
+      MAX_WAIT=60
+      WAITED=0
+      until wget -qO- http://localhost:8080/api/slots || [ $WAITED -ge $MAX_WAIT ]; do
+        echo "Waiting for API... ($WAITED/$MAX_WAIT s)"
+        sleep 3
+        WAITED=$((WAITED + 3))
+      done
+    - echo "=== SlotGuard API Ready ==="
+  script:
+    - echo "=== Running API + Concurrency + Database Tests ==="
+    - cd automation
+    - chmod +x mvnw
+    - ./mvnw $MAVEN_CLI_OPTS test
+        -DbaseUrl=http://localhost:8080
+        -Dgroups="api,concurrency,database"
+    - echo "=== Integration Tests Passed ==="
+  artifacts:
+    when: always
+    paths:
+      - automation/target/allure-results/
+      - automation/target/surefire-reports/
+    reports:
+      junit: automation/target/surefire-reports/TEST-*.xml
+    expire_in: 1 hour
+  dependencies:
+    - build-application
+  tags:
+    - docker
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 4: UI Tests — Selenium + Playwright cross-browser tests
+# Requires a browser-enabled runner (Chrome/Firefox installed)
+# ─────────────────────────────────────────────────────────────────────────────
+ui-tests:
+  stage: ui-test
+  image: selenium/standalone-chrome:latest
+  before_script:
+    - echo "=== Starting SlotGuard Application for UI Tests ==="
+    - apt-get update -q && apt-get install -y -q default-jdk wget
+    - java -jar application/target/slotguard-application-*.jar &
+    - |
+      MAX_WAIT=60
+      WAITED=0
+      until wget -qO- http://localhost:8080/api/slots || [ $WAITED -ge $MAX_WAIT ]; do
+        echo "Waiting for API... ($WAITED/$MAX_WAIT s)"
+        sleep 3
+        WAITED=$((WAITED + 3))
+      done
+    - echo "=== API Ready for UI Tests ==="
+  script:
+    - echo "=== Running Selenium UI Tests ==="
+    - cd automation
+    - chmod +x mvnw
+    - ./mvnw $MAVEN_CLI_OPTS test
+        -DbaseUrl=http://localhost:8080
+        -Dgroups="ui"
+    - echo "=== UI Tests Passed ==="
+  artifacts:
+    when: always
+    paths:
+      - automation/target/allure-results/
+      - automation/target/surefire-reports/
+    reports:
+      junit: automation/target/surefire-reports/TEST-*.xml
+    expire_in: 1 hour
+  dependencies:
+    - build-application
+  tags:
+    - docker
+  allow_failure: true   # UI tests may fail in headless CI without display
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 5: Load Tests — JMeter concurrent booking stress test
+# Runs the JMeter plan against the live application
+# ─────────────────────────────────────────────────────────────────────────────
+load-test:
+  stage: load-test
+  image: justb4/jmeter:5.6.3
+  before_script:
+    - echo "=== Starting SlotGuard Application for Load Test ==="
+    - apk add --no-cache openjdk17 --repository=https://dl-cdn.alpinelinux.org/alpine/v3.18/community
+    - java -jar application/target/slotguard-application-*.jar &
+    - |
+      MAX_WAIT=60
+      WAITED=0
+      until wget -qO- http://localhost:8080/api/slots || [ $WAITED -ge $MAX_WAIT ]; do
+        echo "Waiting for API... ($WAITED/$MAX_WAIT s)"
+        sleep 3
+        WAITED=$((WAITED + 3))
+      done
+    - echo "=== API Ready for JMeter Load Test ==="
+  script:
+    - echo "=== Running JMeter Concurrent Load Test ==="
+    - mkdir -p jmeter-results
+    - jmeter -n
+        -t performance/slotguard-load-test.jmx
+        -l jmeter-results/results.jtl
+        -e -o jmeter-results/report
+        -Jhost=localhost
+        -Jport=8080
+    - echo "=== Load Test Completed ==="
+    # Check JMeter exit code: 0 = pass, non-zero = assertion failure
+  artifacts:
+    when: always
+    paths:
+      - jmeter-results/
+    expire_in: 1 day
+  dependencies:
+    - build-application
+  tags:
+    - docker
+  allow_failure: true   # Don't fail the pipeline on load test issues; report separately
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 6: Report — Generate and publish Allure Report
+# ─────────────────────────────────────────────────────────────────────────────
+generate-allure-report:
+  stage: report
+  image: frankescobar/allure-docker-service:2.24.0
+  script:
+    - echo "=== Generating Allure Report ==="
+    - ls -la automation/target/allure-results/ || echo "No allure-results found"
+    - allure generate automation/target/allure-results/ --clean -o allure-report/
+    - echo "=== Allure Report Generated ==="
+  artifacts:
+    paths:
+      - allure-report/
+    expire_in: 7 days
+  dependencies:
+    - integration-tests
+    - ui-tests
+  tags:
+    - docker
+  pages:
+    publish: allure-report/
+  # Publish to GitLab Pages for easy access
+  environment:
+    name: test-report
+    url: https://$CI_PROJECT_NAMESPACE.gitlab.io/$CI_PROJECT_NAME
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JIRA Integration (Optional) — Create bug when concurrency test detects defect
+# Requires JIRA_BASE_URL, JIRA_USER, JIRA_API_TOKEN in CI/CD variables
+# ─────────────────────────────────────────────────────────────────────────────
+# create-jira-defect:
+#   stage: report
+#   script:
+#     - |
+#       if grep -q "DOUBLE_BOOKED" automation/target/surefire-reports/*.txt 2>/dev/null; then
+#         echo "Double booking defect detected — creating Jira issue"
+#         curl -X POST "$JIRA_BASE_URL/rest/api/3/issue" \
+#           -u "$JIRA_USER:$JIRA_API_TOKEN" \
+#           -H "Content-Type: application/json" \
+#           -d '{
+#             "fields": {
+#               "project": {"key": "SLOT"},
+#               "summary": "Double booking detected under concurrent reservation requests",
+#               "description": "Race condition caused overbooking. Build: '"$CI_PIPELINE_ID"'",
+#               "issuetype": {"name": "Bug"},
+#               "priority": {"name": "Critical"}
+#             }
+#           }'
+#       fi
+#   when: on_failure
+#   allow_failure: true

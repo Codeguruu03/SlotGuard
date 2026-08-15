@@ -42,10 +42,11 @@
         </dependency>
 
         <!-- H2 Database for Zero-Config Local Execution & Fast Unit Tests -->
+        <!-- compile scope (not runtime) so H2 Server TCP bean compiles correctly -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <scope>compile</scope>
         </dependency>
 
         <dependency>

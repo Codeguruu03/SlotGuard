@@ -1,27 +1,79 @@
 <!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
 <suite name="SlotGuard Automation Suite" verbose="1" parallel="false">
+
+    <!--
+        SlotGuard Complete Test Suite
+        ================================
+        Groups:
+          smoke        → Quick sanity check (runs in < 30s)
+          regression   → Full regression suite
+          concurrency  → Concurrent reservation & invariant tests (the core innovation)
+          api          → REST Assured API tests
+          ui           → Selenium UI tests
+          cross-browser → Playwright cross-browser tests
+          database     → SQL invariant validation tests
+    -->
+
+    <!-- 1. API Tests — REST Assured functional API validation -->
     <test name="API Tests">
+        <groups>
+            <run>
+                <include name="api"/>
+            </run>
+        </groups>
         <classes>
             <class name="com.slotguard.automation.api.SlotApiTest"/>
             <class name="com.slotguard.automation.api.ReservationApiTest"/>
         </classes>
     </test>
 
+    <!-- 2. Database Invariant Tests — SQL-level business rule validation -->
     <test name="Database Invariant Tests">
+        <groups>
+            <run>
+                <include name="database"/>
+            </run>
+        </groups>
         <classes>
             <class name="com.slotguard.automation.database.ReservationDatabaseTest"/>
         </classes>
     </test>
 
-    <test name="UI Tests">
+    <!-- 3. Concurrency Tests — The Core Innovation of SlotGuard -->
+    <test name="Concurrency &amp; Race Condition Tests">
+        <groups>
+            <run>
+                <include name="concurrency"/>
+            </run>
+        </groups>
+        <classes>
+            <class name="com.slotguard.automation.concurrency.ConcurrentReservationTest"/>
+        </classes>
+    </test>
+
+    <!-- 4. Selenium UI Tests — Functional browser-based tests -->
+    <test name="UI Tests (Selenium)">
+        <groups>
+            <run>
+                <include name="ui"/>
+                <exclude name="cross-browser"/>
+            </run>
+        </groups>
         <classes>
             <class name="com.slotguard.automation.ui.SeleniumReservationTest"/>
         </classes>
     </test>
 
-    <test name="Cross-Browser Tests">
+    <!-- 5. Cross-Browser Tests — Playwright on Chromium, Firefox, WebKit -->
+    <test name="Cross-Browser Tests (Playwright)">
+        <groups>
+            <run>
+                <include name="cross-browser"/>
+            </run>
+        </groups>
         <classes>
             <class name="com.slotguard.automation.ui.PlaywrightReservationTest"/>
         </classes>
     </test>
+
 </suite>

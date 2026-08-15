@@ -1,0 +1,16 @@
+# Test-specific application configuration
+# Disables H2 TCP server in test context to avoid port conflicts
+# when running multiple test contexts in parallel
+
+spring:
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:test-data.sql
+
+# Disable H2 TCP server during unit tests (not needed - tests use JPA directly via Spring context)
+# The automation integration tests (separate JVM) connect via TCP to the RUNNING application
+h2:
+  tcp:
+    enabled: false

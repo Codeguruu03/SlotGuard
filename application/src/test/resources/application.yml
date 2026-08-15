@@ -1,0 +1,25 @@
+# Test application configuration - loaded automatically during unit tests
+# This overrides the main application.yml for test contexts
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb-${random.uuid};DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      data-locations: classpath:test-data.sql
+
+# Disable H2 TCP server during unit tests - not needed, tests use JPA directly
+# The automation integration tests (separate JVM) connect via TCP to the running app
+h2:
+  tcp:
+    enabled: false
