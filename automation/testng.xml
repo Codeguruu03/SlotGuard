@@ -1,0 +1,27 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="SlotGuard Automation Suite" verbose="1" parallel="false">
+    <test name="API Tests">
+        <classes>
+            <class name="com.slotguard.automation.api.SlotApiTest"/>
+            <class name="com.slotguard.automation.api.ReservationApiTest"/>
+        </classes>
+    </test>
+
+    <test name="Database Invariant Tests">
+        <classes>
+            <class name="com.slotguard.automation.database.ReservationDatabaseTest"/>
+        </classes>
+    </test>
+
+    <test name="UI Tests">
+        <classes>
+            <class name="com.slotguard.automation.ui.SeleniumReservationTest"/>
+        </classes>
+    </test>
+
+    <test name="Cross-Browser Tests">
+        <classes>
+            <class name="com.slotguard.automation.ui.PlaywrightReservationTest"/>
+        </classes>
+    </test>
+</suite>

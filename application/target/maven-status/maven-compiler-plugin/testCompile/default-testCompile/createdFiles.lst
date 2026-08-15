@@ -1,0 +1,3 @@
+com\slotguard\application\service\ReservationServiceTest.class
+com\slotguard\application\controller\SlotControllerTest.class
+com\slotguard\application\controller\ConfigControllerTest.class

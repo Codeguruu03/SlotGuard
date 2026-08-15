@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.transaction.support.TransactionTemplate;
+
 import java.util.List;
 
 @Service
@@ -22,19 +24,22 @@ public class ReservationService {
     private final SlotRepository slotRepository;
     private final ReservationRepository reservationRepository;
     private final ConcurrencyConfigService configService;
+    private final TransactionTemplate transactionTemplate;
 
     public ReservationService(SlotRepository slotRepository,
                               ReservationRepository reservationRepository,
-                              ConcurrencyConfigService configService) {
+                              ConcurrencyConfigService configService,
+                              TransactionTemplate transactionTemplate) {
         this.slotRepository = slotRepository;
         this.reservationRepository = reservationRepository;
         this.configService = configService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     public Reservation makeReservation(ReservationRequest request) {
         ConcurrencyMode currentMode = configService.getActiveMode();
         if (currentMode == ConcurrencyMode.SAFE) {
-            return makeReservationSafe(request);
+            return transactionTemplate.execute(status -> makeReservationSafe(request));
         } else {
             return makeReservationVulnerable(request);
         }

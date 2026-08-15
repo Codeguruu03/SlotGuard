@@ -59,7 +59,7 @@ public class ReservationServiceTest {
                 } catch (IllegalStateException e) {
                     rejectedCount.incrementAndGet();
                 } catch (Exception e) {
-                    // Unexpected error
+                    System.err.println("Thread caught exception: " + e.getClass().getName() + " : " + e.getMessage());
                 }
             }));
         }
@@ -103,7 +103,8 @@ public class ReservationServiceTest {
                     if (reservation != null) {
                         successCount.incrementAndGet();
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    System.err.println("Vulnerable mode caught exception: " + e.getClass().getName() + " : " + e.getMessage());
                 }
             });
         }

@@ -20,9 +20,6 @@ public class Slot {
     @Column(name = "reserved_count", nullable = false)
     private Integer reservedCount = 0;
 
-    @Version
-    private Long version = 0L;
-
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -45,9 +42,6 @@ public class Slot {
 
     public Integer getReservedCount() { return reservedCount; }
     public void setReservedCount(Integer reservedCount) { this.reservedCount = reservedCount; }
-
-    public Long getVersion() { return version; }
-    public void setVersion(Long version) { this.version = version; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
